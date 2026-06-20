@@ -53,7 +53,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 단어 풀
+# 2. 단어 풀 및 캐릭터
 WORD_POOL = [
     "마음씨", "괄목", "치후", "아름", "밀기울", "안채", "날씨", "바라지", "도막말",
     "옹고집", "나부굴다", "나이", "까닥이다", "끼릉하다", "제법", "가풀막", "바글비율",
@@ -70,7 +70,6 @@ CHARACTERS = {
     "판다 광부 🐼": "🐼"
 }
 
-# 3. 단계별 퀘스트 정보
 STAGE_QUESTS = {
     1: {"target": 5, "name": "광산의 첫걸음", "reward_msg": "💎 희귀한 황석을 발견했습니다! 보너스 +50점"},
     2: {"target": 8, "name": "깊어지는 어둠", "reward_msg": "📜 고대 광부의 숨겨진 일지를 찾았습니다! 보너스 +100점"},
@@ -79,7 +78,7 @@ STAGE_QUESTS = {
     5: {"target": 999, "name": "무한의 심연", "reward_msg": "👑 당신은 이제 전설의 마스터 광부입니다!"}
 }
 
-# 4. 세션 상태 초기화
+# 3. 세션 상태 초기화
 if "game_started" not in st.session_state:
     st.session_state.game_started = False
 if "user_name" not in st.session_state:
@@ -94,12 +93,10 @@ if "stage" not in st.session_state:
     st.session_state.stage = 1
 if "mined_count" not in st.session_state:
     st.session_state.mined_count = 0
-if "last_spawn_time" not in st.session_state:
-    st.session_state.last_spawn_time = 0
 if "quest_alert" not in st.session_state:
     st.session_state.quest_alert = ""
 
-# 5. 단어 타이핑 정답 확인 함수
+# 4. 단어 타이핑 정답 확인 함수 (rerun 유발 코드를 제거하여 안정화)
 def check_typing():
     user_word = st.session_state.typing_input.strip()
     if user_word in st.session_state.active_words:
@@ -116,42 +113,38 @@ def check_typing():
             st.session_state.stage += 1
             st.session_state.mined_count = 0
         
+        # 새 단어 즉시 공급
         available_words = [w for w in WORD_POOL if w not in st.session_state.active_words]
         if available_words:
             st.session_state.active_words.append(random.choice(available_words))
             
-    st.session_state.typing_input = ""
+    st.session_state.typing_input = "" # 입력창 비우기
 
-# 6. 메인 화면
+# 5. 메인 UI 빌드
 st.title("⛏️ 한컴타자: 자원캐기 (Web Edition)")
 
-# --- [대기 화면: 이름 & 캐릭터 선택] ---
+# --- [대기 화면] ---
 if not st.session_state.game_started:
     st.markdown("### 🎒 광산에 들어가기 전 준비")
     col_setup1, col_setup2 = st.columns([2, 1])
     
     with col_setup1:
         st.info("이름을 입력하고 광부 캐릭터를 선택한 뒤 '게임 시작' 버튼을 누르세요!")
-        
-        # 🌟 수정 포인트 1: 유저 이름 입력창 추가
         input_name = st.text_input("광부의 이름을 입력하세요:", value="초보 광부", max_chars=12)
         
-        # 캐릭터 선택
         st.session_state.selected_char = st.radio(
             "플레이할 캐릭터를 선택하세요:", options=list(CHARACTERS.keys()), horizontal=True
         )
         
         if st.button("🚀 광산 진입 (게임 시작)", type="primary", use_container_width=True):
-            # 입력받은 이름을 세션 상태에 저장 (공백 제거 후 빈칸이면 기본값 사용)
             st.session_state.user_name = input_name.strip() if input_name.strip() else "초보 광부"
-            
             st.session_state.game_started = True
             st.session_state.active_words = random.sample(WORD_POOL, 6)
-            st.session_state.last_spawn_time = time.time()
             st.session_state.stage = 1
             st.session_state.mined_count = 0
             st.session_state.score = 0
-            st.session_state.quest_alert = f"⛏️ {st.session_state.user_name} 광부님, 광산에 진입했습니다! 첫 번째 퀘스트를 달성하세요!"
+            st.session_state.quest_alert = f"⛏️ {st.session_state.user_name} 광부님, 광산에 진입했습니다!"
+            st.rarun = True # 트리거용
             st.rerun()
             
     with col_setup2:
@@ -166,27 +159,31 @@ if not st.session_state.game_started:
 
 # --- [게임 화면] ---
 else:
-    current_time = time.time()
-    if current_time - st.session_state.last_spawn_time > 3.0:
-        if len(st.session_state.active_words) < 20:
-            available_words = [w for w in WORD_POOL if w not in st.session_state.active_words]
-            if available_words:
-                st.session_state.active_words.append(random.choice(available_words))
-        st.session_state.last_spawn_time = current_time
-
     if st.session_state.quest_alert:
         st.success(st.session_state.quest_alert)
 
     col_left, col_right = st.columns([3, 1])
 
     with col_left:
-        st.markdown("### ⛰️ 광산 필드")
-        word_html = "".join([f'<div class="resource-item">💎 {word}</div>' for word in st.session_state.active_words])
-        st.markdown(f'<div class="mine-field">{word_html}</div>', unsafe_allow_html=True)
+        # 🌟 에러 해결의 핵심: st.fragment를 사용하여 3초마다 '이 안의 코드만' 안전하게 리프레시합니다.
+        # 이 방식을 쓰면 입력창 전체가 깜빡이거나 튕기는 TypeError가 완벽히 방지됩니다.
+        @st.fragment(run_every=3.0)
+        def render_mine_field():
+            # 3초마다 자동으로 단어가 하나씩 추가되는 로직 포함
+            if len(st.session_state.active_words) < 20:
+                available_words = [w for w in WORD_POOL if w not in st.session_state.active_words]
+                if available_words:
+                    st.session_state.active_words.append(random.choice(available_words))
+            
+            st.markdown("### ⛰️ 광산 필드")
+            word_html = "".join([f'<div class="resource-item">💎 {word}</div>' for word in st.session_state.active_words])
+            st.markdown(f'<div class="mine-field">{word_html}</div>', unsafe_allow_html=True)
+
+        # 광산 필드 렌더링
+        render_mine_field()
         
         st.write("")
-        
-        # 커서 자동 포커스 유지
+        # 유저 타자 입력창 (autofocus 유지)
         st.text_input(
             "광물을 캐기 위해 단어를 입력하세요:",
             key="typing_input",
@@ -201,7 +198,6 @@ else:
         chosen_emoji = CHARACTERS[st.session_state.selected_char]
         current_quest = STAGE_QUESTS.get(st.session_state.stage, STAGE_QUESTS[5])
         
-        # 🌟 수정 포인트 2: 입력한 유저 이름(user_name)이 보드에 출력되도록 반영
         st.markdown(f"""
         <div class="sidebar-panel">
             <div style="font-size: 50px;">{chosen_emoji}</div>
@@ -221,6 +217,3 @@ else:
         if st.button("⏹️ 게임 종료 (대기실로)", use_container_width=True):
             st.session_state.game_started = False
             st.rerun()
-
-    time.sleep(2.0)
-    st.rerun()
