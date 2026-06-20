@@ -1,6 +1,5 @@
 import streamlit as st
 import random
-import time
 
 # 1. 페이지 설정 및 오리지널 감성 CSS 스타일링
 st.set_page_config(page_title="한컴타자: 자원캐기 Web", page_icon="⛏️", layout="wide")
@@ -16,7 +15,7 @@ st.markdown("""
         background-color: #a68b7c;
         border: 5px solid #6e5547;
         border-radius: 10px;
-        min-height: 400px;
+        min-height: 480px;
         position: relative;
         padding: 20px;
         box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
@@ -96,7 +95,7 @@ if "mined_count" not in st.session_state:
 if "quest_alert" not in st.session_state:
     st.session_state.quest_alert = ""
 
-# 4. 단어 타이핑 정답 확인 함수 (rerun 유발 코드를 제거하여 안정화)
+# 4. 단어 타이핑 정답 확인 함수
 def check_typing():
     user_word = st.session_state.typing_input.strip()
     if user_word in st.session_state.active_words:
@@ -113,12 +112,12 @@ def check_typing():
             st.session_state.stage += 1
             st.session_state.mined_count = 0
         
-        # 새 단어 즉시 공급
+        # 새 단어 보충
         available_words = [w for w in WORD_POOL if w not in st.session_state.active_words]
         if available_words:
             st.session_state.active_words.append(random.choice(available_words))
             
-    st.session_state.typing_input = "" # 입력창 비우기
+    st.session_state.typing_input = "" # 엔터 후 입력창 비우기
 
 # 5. 메인 UI 빌드
 st.title("⛏️ 한컴타자: 자원캐기 (Web Edition)")
@@ -139,12 +138,11 @@ if not st.session_state.game_started:
         if st.button("🚀 광산 진입 (게임 시작)", type="primary", use_container_width=True):
             st.session_state.user_name = input_name.strip() if input_name.strip() else "초보 광부"
             st.session_state.game_started = True
-            st.session_state.active_words = random.sample(WORD_POOL, 6)
+            st.session_state.active_words = random.sample(WORD_POOL, 8) # 시작 단어 8개로 상향
             st.session_state.stage = 1
             st.session_state.mined_count = 0
             st.session_state.score = 0
             st.session_state.quest_alert = f"⛏️ {st.session_state.user_name} 광부님, 광산에 진입했습니다!"
-            st.rarun = True # 트리거용
             st.rerun()
             
     with col_setup2:
@@ -162,15 +160,14 @@ else:
     if st.session_state.quest_alert:
         st.success(st.session_state.quest_alert)
 
+    # 좌우 구조 정의 (좌측: 광산 필드만 집중, 우측: 진행 상황 및 타이핑 입력창)
     col_left, col_right = st.columns([3, 1])
 
     with col_left:
-        # 🌟 에러 해결의 핵심: st.fragment를 사용하여 3초마다 '이 안의 코드만' 안전하게 리프레시합니다.
-        # 이 방식을 쓰면 입력창 전체가 깜빡이거나 튕기는 TypeError가 완벽히 방지됩니다.
+        # 광산 필드만 3초마다 부분 리프레시 수행
         @st.fragment(run_every=3.0)
         def render_mine_field():
-            # 3초마다 자동으로 단어가 하나씩 추가되는 로직 포함
-            if len(st.session_state.active_words) < 20:
+            if len(st.session_state.active_words) < 25:
                 available_words = [w for w in WORD_POOL if w not in st.session_state.active_words]
                 if available_words:
                     st.session_state.active_words.append(random.choice(available_words))
@@ -179,25 +176,14 @@ else:
             word_html = "".join([f'<div class="resource-item">💎 {word}</div>' for word in st.session_state.active_words])
             st.markdown(f'<div class="mine-field">{word_html}</div>', unsafe_allow_html=True)
 
-        # 광산 필드 렌더링
         render_mine_field()
-        
-        st.write("")
-        # 유저 타자 입력창 (autofocus 유지)
-        st.text_input(
-            "광물을 캐기 위해 단어를 입력하세요:",
-            key="typing_input",
-            on_change=check_typing,
-            placeholder="여기에 단어를 입력하고 Enter!",
-            label_visibility="collapsed",
-            autofocus=True
-        )
 
     with col_right:
         st.markdown('### 📊 진행 상황')
         chosen_emoji = CHARACTERS[st.session_state.selected_char]
         current_quest = STAGE_QUESTS.get(st.session_state.stage, STAGE_QUESTS[5])
         
+        # 유저 대시보드
         st.markdown(f"""
         <div class="sidebar-panel">
             <div style="font-size: 50px;">{chosen_emoji}</div>
@@ -212,6 +198,17 @@ else:
             <p style="font-size: 13px; color: #555;">광물 채굴: {st.session_state.mined_count} / {current_quest['target']} 개</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        st.write("")
+        
+        # 🌟 핵심 수정 1: 타이핑 입력 칸을 광산 우측(진행 상황판 바로 밑)으로 이동
+        # 🌟 핵심 수정 2: 오류를 뿜던 autofocus=True 제거하여 수동 마우스 클릭 입력으로 변경 (안정성 확보)
+        st.text_input(
+            "⌨️ 여기에 타자를 입력하세요:",
+            key="typing_input",
+            on_change=check_typing,
+            placeholder="단어 입력 후 Enter!"
+        )
         
         st.write("")
         if st.button("⏹️ 게임 종료 (대기실로)", use_container_width=True):
